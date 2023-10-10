@@ -66,11 +66,6 @@ func (i *IngressController) Reconcile(ctx context.Context, request reconcile.Req
 
 	i.logger.Info("update cloudflare tunnel config", "triggered-by", request.NamespacedName)
 
-	err = i.attachFinalizer(ctx, *(origin.DeepCopy()))
-	if err != nil {
-		return reconcile.Result{}, errors.Wrapf(err, "attach finalizer to ingress %s", request.NamespacedName)
-	}
-
 	ingresses, err := i.listControlledIngresses(ctx)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrap(err, "list controlled ingresses")
@@ -92,13 +87,6 @@ func (i *IngressController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, errors.Wrap(err, "put exposures")
 	}
 
-	if origin.DeletionTimestamp != nil {
-		err = i.cleanFinalizer(ctx, origin)
-		if err != nil {
-			return reconcile.Result{}, errors.Wrapf(err, "clean finalizer from ingress %s", request.NamespacedName)
-		}
-	}
-
 	i.logger.V(3).Info("reconcile completed", "triggered-by", request.NamespacedName)
 	return reconcile.Result{}, nil
 }
@@ -108,50 +96,17 @@ func (i *IngressController) isControlledByThisController(ctx context.Context, ta
 		return true, nil
 	}
 
-	if target.Spec.IngressClassName == nil {
-		return false, nil
-	}
-
-	controlledIngressClasses, err := i.listControlledIngressClasses(ctx)
-	if err != nil {
-		return false, errors.Wrapf(err, "fetch controlled ingress classes with controller name %s", i.controllerClassName)
-	}
-
-	var controlledIngressClassNames []string
-	for _, controlledIngressClass := range controlledIngressClasses {
-		controlledIngressClassNames = append(controlledIngressClassNames, controlledIngressClass.Name)
-	}
-
-	if stringSliceContains(controlledIngressClassNames, *target.Spec.IngressClassName) {
+	if target.Spec.IngressClassName != nil && i.ingressClassName == *target.Spec.IngressClassName {
 		return true, nil
 	}
 
 	return false, nil
 }
 
-func (i *IngressController) listControlledIngressClasses(ctx context.Context) ([]networkingv1.IngressClass, error) {
-	list := networkingv1.IngressClassList{}
-	err := i.kubeClient.List(ctx, &list)
-	if err != nil {
-		return nil, errors.Wrap(err, "list ingress classes")
-	}
-	return list.Items, nil
-}
-
 func (i *IngressController) listControlledIngresses(ctx context.Context) ([]networkingv1.Ingress, error) {
-	controlledIngressClasses, err := i.listControlledIngressClasses(ctx)
-	if err != nil {
-		return nil, errors.Wrapf(err, "fetch controlled ingress classes with controller name %s", i.controllerClassName)
-	}
-
-	var controlledIngressClassNames []string
-	for _, controlledIngressClass := range controlledIngressClasses {
-		controlledIngressClassNames = append(controlledIngressClassNames, controlledIngressClass.Name)
-	}
-
 	var result []networkingv1.Ingress
 	list := networkingv1.IngressList{}
-	err = i.kubeClient.List(ctx, &list)
+	err := i.kubeClient.List(ctx, &list)
 	if err != nil {
 		return nil, errors.Wrap(err, "list ingresses")
 	}
@@ -163,11 +118,7 @@ func (i *IngressController) listControlledIngresses(ctx context.Context) ([]netw
 				return
 			}
 
-			if ingress.Spec.IngressClassName == nil {
-				return
-			}
-
-			if stringSliceContains(controlledIngressClassNames, *ingress.Spec.IngressClassName) {
+			if ingress.Spec.IngressClassName != nil && i.ingressClassName == *ingress.Spec.IngressClassName {
 				result = append(result, ingress)
 				return
 			}
@@ -175,47 +126,4 @@ func (i *IngressController) listControlledIngresses(ctx context.Context) ([]netw
 	}
 
 	return result, nil
-}
-
-func (i *IngressController) attachFinalizer(ctx context.Context, ingress networkingv1.Ingress) error {
-	if stringSliceContains(ingress.Finalizers, IngressControllerFinalizer) {
-		return nil
-	}
-	ingress.Finalizers = append(ingress.Finalizers, IngressControllerFinalizer)
-	err := i.kubeClient.Update(ctx, &ingress)
-	if err != nil {
-		return errors.Wrapf(err, "attach finalizer for %s/%s", ingress.Namespace, ingress.Name)
-	}
-	return nil
-}
-
-func (i *IngressController) cleanFinalizer(ctx context.Context, ingress networkingv1.Ingress) error {
-	if !stringSliceContains(ingress.Finalizers, IngressControllerFinalizer) {
-		return nil
-	}
-	ingress.Finalizers = removeStringFromSlice(ingress.Finalizers, IngressControllerFinalizer)
-	err := i.kubeClient.Update(ctx, &ingress)
-	if err != nil {
-		return errors.Wrapf(err, "clean finalizer for %s/%s", ingress.Namespace, ingress.Name)
-	}
-	return nil
-}
-
-func removeStringFromSlice(finalizers []string, finalizer string) []string {
-	var result []string
-	for _, f := range finalizers {
-		if f != finalizer {
-			result = append(result, f)
-		}
-	}
-	return result
-}
-
-func stringSliceContains(slice []string, element string) bool {
-	for _, sliceElement := range slice {
-		if sliceElement == element {
-			return true
-		}
-	}
-	return false
 }
