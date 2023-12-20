@@ -23,7 +23,7 @@ func CreateControlledCloudflaredIfNotExist(
 	err := kubeClient.List(ctx, &list, &client.ListOptions{
 		Namespace: namespace,
 		LabelSelector: labels.SelectorFromSet(labels.Set{
-			"strrl.dev/cloudflare-tunnel-ingress-controller": "controlled-cloudflared-connector",
+			"tsic.top/cloudflare-tunnel-ingress-controller": "controlled-cloudflared-connector",
 		}),
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func cloudflaredConnectDeploymentTemplating(token string, namespace string) *app
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app": appName,
-				"strrl.dev/cloudflare-tunnel-ingress-controller": "controlled-cloudflared-connector",
+				"tsic.top/cloudflare-tunnel-ingress-controller": "controlled-cloudflared-connector",
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -80,6 +80,8 @@ func cloudflaredConnectDeploymentTemplating(token string, namespace string) *app
 							ImagePullPolicy: v1.PullIfNotPresent,
 							Command: []string{
 								"cloudflared",
+								"--protocol",
+								"http2",
 								"--no-autoupdate",
 								"tunnel",
 								"--metrics",
@@ -90,7 +92,8 @@ func cloudflaredConnectDeploymentTemplating(token string, namespace string) *app
 							},
 						},
 					},
-					RestartPolicy: v1.RestartPolicyAlways,
+					RestartPolicy:   v1.RestartPolicyAlways,
+					SecurityContext: &v1.PodSecurityContext{},
 				},
 			},
 		},
