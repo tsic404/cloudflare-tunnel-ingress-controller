@@ -38,6 +38,7 @@ spec:
             - --cloudflare-api-token=$(CLOUDFLARE_API_TOKEN)
             - --cloudflare-account-id=$(CLOUDFLARE_ACCOUNT_ID)
             - --cloudflare-tunnel-name=$(CLOUDFLARE_TUNNEL_NAME)
+            - --cloudflare-tunnel-cmds=$(CLOUDFLARE_TUNEL_CMDS)
             - --namespace=$(NAMESPACE)
           env:
             - name: CLOUDFLARE_API_TOKEN
@@ -59,6 +60,16 @@ spec:
                   {{- else }}
                   name: cloudflare-api
                   key: cloudflare-account-id
+                  {{- end }}
+            - name: CLOUDFLARE_TUNEL_CMDS
+              valueFrom:
+                secretKeyRef:
+                  {{- if hasKey .Values.cloudflare "secretRef" }}
+                  name: {{ .Values.cloudflare.secretRef.name }}
+                  key: {{ .Values.cloudflare.secretRef.cloudflareTunnelCmd }}
+                  {{- else }}
+                  name: cloudflare-api
+                  key: cloudflare-tunel-cmd
                   {{- end }}
             - name: CLOUDFLARE_TUNNEL_NAME
               valueFrom:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 
 	cloudflarecontroller "github.com/STRRL/cloudflare-tunnel-ingress-controller/pkg/cloudflare-controller"
 	"github.com/pkg/errors"
@@ -18,6 +19,7 @@ func CreateControlledCloudflaredIfNotExist(
 	ctx context.Context,
 	kubeClient client.Client,
 	tunnelClient *cloudflarecontroller.TunnelClient,
+	cmds string,
 	namespace string,
 ) error {
 	list := appsv1.DeploymentList{}
@@ -45,7 +47,7 @@ func CreateControlledCloudflaredIfNotExist(
 		return errors.Wrap(err, "invalid replica count")
 	}
 
-	deployment := cloudflaredConnectDeploymentTemplating(token, namespace, int32(replicas))
+	deployment := cloudflaredConnectDeploymentTemplating(token, cmds, namespace, int32(replicas))
 	err = kubeClient.Create(ctx, deployment)
 	if err != nil {
 		return errors.Wrap(err, "create controlled-cloudflared-connector deployment")
@@ -53,10 +55,12 @@ func CreateControlledCloudflaredIfNotExist(
 	return nil
 }
 
-func cloudflaredConnectDeploymentTemplating(token string, namespace string, replicas int32) *appsv1.Deployment {
+func cloudflaredConnectDeploymentTemplating(token string, cmds string, namespace string, replicas int32) *appsv1.Deployment {
 	appName := "controlled-cloudflared-connector"
 	image := os.Getenv("CLOUDFLARED_IMAGE")
 	pullPolicy := os.Getenv("CLOUDFLARED_IMAGE_PULL_POLICY")
+	cmd := []string{"cloudflared", "--no-autoupdate", "tunnel", "--metrics", "0.0.0.0:44483", "run", "--token", token}
+	cmd = append(cmd, strings.Split(cmds, ",")...)
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -87,16 +91,7 @@ func cloudflaredConnectDeploymentTemplating(token string, namespace string, repl
 							Name:            appName,
 							Image:           image,
 							ImagePullPolicy: v1.PullPolicy(pullPolicy),
-							Command: []string{
-								"cloudflared",
-								"--no-autoupdate",
-								"tunnel",
-								"--metrics",
-								"0.0.0.0:44483",
-								"run",
-								"--token",
-								token,
-							},
+							Command:         cmd,
 						},
 					},
 					RestartPolicy: v1.RestartPolicyAlways,

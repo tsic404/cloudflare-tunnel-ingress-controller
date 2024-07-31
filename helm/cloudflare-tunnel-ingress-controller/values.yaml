@@ -6,6 +6,7 @@ cloudflare:
   accountId: ""
   tunnelName: ""
   apiToken: ""
+  cloudflareTunnelCmd: ""
 
   # Uncomment if you would like to use an existing secret instead of the creating a new one.
   # secretRef:
